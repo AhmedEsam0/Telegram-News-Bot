@@ -1,53 +1,35 @@
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from telegram import Bot
-from dotenv import load_dotenv
 import os
 
-# تحميل المتغيرات من .env
-load_dotenv()
+# تحميل متغيرات البيئة
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+
+# إنشاء البوت
+bot = Bot(token=BOT_TOKEN)
 
 # إنشاء تطبيق FastAPI
 app = FastAPI()
 
-# إعداد CORS للسماح بالاتصال من أي مكان
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # ممكن تخليها ["https://your-frontend.com"] لو عايز تأمنها
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# عرض ملف index.html من مجلد static
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# جلب متغيرات البيئة
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-
-# تأكد إن التوكن موجود
-if not BOT_TOKEN or not CHANNEL_ID:
-    raise Exception("❌ BOT_TOKEN أو CHANNEL_ID مش متسجلين في Environment Variables")
-
-# تهيئة البوت
-bot = Bot(token=BOT_TOKEN)
-
-# راوت لاختبار التشغيل
 @app.get("/")
-def root():
-    return {"message": "✅ Bot is running!"}
+async def home():
+    return FileResponse("static/index.html")
 
-# راوت للنشر من خلال POST
-@app.post("/execute")
-async def execute(request: Request):
+@app.post("/chatgpt-control")
+async def post_message(request: Request):
     try:
         data = await request.json()
         message = data.get("message")
-
-        if not message:
-            return {"status": "❌ no message found in request"}
-
-        # إرسال الرسالة
-        bot.send_message(chat_id=CHANNEL_ID, text=message)
-        return {"status": "✅ message sent", "text": message}
-
+        if message:
+            bot.send_message(chat_id=CHANNEL_ID, text=message)
+            return {"status": "✅ sent"}
+        else:
+            return JSONResponse(status_code=400, content={"status": "❌", "error": "No message provided"})
     except Exception as e:
-        return {"status": "❌ failed", "error": str(e)}
+        return JSONResponse(status_code=500, content={"status": "❌", "error": str(e)})
